@@ -1,0 +1,55 @@
+version: "3"
+
+networks:
+  proxy:
+    external: true
+
+services:
+  php-fpm:
+    container_name: ${COMPOSE_PROJECT_NAME}-php-fpm
+    restart: ${PROJECT_RESTART:-no}
+    build:
+      context: ./php-fpm
+      args:
+        - LARADOCK_PHP_VERSION=${PHP_VERSION}
+        - INSTALL_EXIF=true
+        - INSTALL_IMAGEMAGICK=true
+        - INSTALL_INTL=true
+        - INSTALL_MYSQLI=true
+        - INSTALL_SOAP=true
+    volumes:
+      - ./php-fpm/php${PHP_VERSION}.ini:/usr/local/etc/php/php.ini
+      - ${PROJECT_PATH}:/var/www/public
+    extra_hosts:
+      - "dockerhost:10.0.75.1"
+    environment:
+      - DOCKER_TLS_VERIFY=1
+      - DOCKER_TLS_CERTDIR=/certs
+      - DOCKER_CERT_PATH=/certs/client
+    networks:
+      - proxy
+    expose:
+      - 9000
+
+  nginx:
+    container_name: ${COMPOSE_PROJECT_NAME}-nginx
+    restart: ${PROJECT_RESTART:-no}
+    build:
+      context: ./nginx
+    volumes:
+      - ${PROJECT_PATH}:/var/www/public
+      - ./nginx/logs:/var/log/nginx
+      - ./nginx/sites:/etc/nginx/sites-available
+      - ./nginx/ssl:/etc/nginx/ssl
+    depends_on:
+      - php-fpm
+    networks:
+      - proxy
+    expose:
+      - 80
+      - 443
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=proxy
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}-nginx.entrypoints=${PROJECT_ENTRYPOINTS}
+      - traefik.http.routers.${COMPOSE_PROJECT_NAME}-nginx.rule=Host(${PROJECT_DOMAINS})
